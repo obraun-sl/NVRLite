@@ -54,7 +54,7 @@ int main(int argc, char *argv[]) {
         streamIds << streamId;
 
         auto *cap = new RtspCaptureThread(streamId, url, &app);
-        cap->setWithUserInterface(true);//(bool)mAppConfig.displayMode);   // if you still use this flag
+        cap->setWithUserInterface((bool)mAppConfig.displayMode);
         captureThreads << cap;
 
         // Recorder worker + recorder thread

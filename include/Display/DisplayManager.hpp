@@ -63,7 +63,7 @@ private slots:
                 cv::resize(it.value(), resized, cv::Size(cell_w, cell_h));
                 resized.copyTo(dstRoi);
 
-                // Optional: overlay streamId
+                // overlay streamId
                 cv::putText(resized,
                             it.key().toStdString(),
                             cv::Point(10, 20),
