@@ -217,6 +217,7 @@ with HTTP `400`.
 
 The config file must be formatted the following way : 
 
+```json
 {
   "streams": [
     { "id": "<name_of_camera>", "url": "<url>" },
@@ -226,11 +227,13 @@ The config file must be formatted the following way :
   "display_mode":0,
   "pre_buffering_time":5.0
 }
+```json
 
-- 'streams' contains the list of rtsp stream and associated name
-- 'http_port' defines the REST API port to contact (0 - 65535)
-- 'display_mode' defines if the display grid is visible  ( 0 = off, 1 = on)
-- 'pre_buffering_time' defines the time to buffer the packet stream when start is called in seconds ( i.e. will save the last N seconds in the mp4 when the start call is made). This is used to compensate latency
+
+- `streams` contains the list of rtsp stream and associated name
+- `http_port` defines the REST API port to contact (0 - 65535)
+- `display_mode` defines if the display grid is visible  ( 0 = off, 1 = on)
+- `pre_buffering_time` defines the time to buffer the packet stream when start is called in seconds ( i.e. will save the last N seconds in the mp4 when the start call is made). This is used to compensate latency
 
 See provided example.json
  
