@@ -227,7 +227,7 @@ The config file must be formatted the following way :
   "display_mode":0,
   "pre_buffering_time":5.0
 }
-```json
+```
 
 
 - `streams` contains the list of rtsp stream and associated name
