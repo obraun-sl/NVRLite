@@ -27,10 +27,10 @@ extern "C" {
 #include <cmath>
 
 #include <QFile>
-#include "Http/json.hpp"   // nlohmann::json
+#include "Http/json.hpp"   // from nlohmann::json
 #include <QDebug>
 
-#define APP_VERSION "0.1.0"
+#define APP_VERSION "0.2.0"
 
 // ---------------- EncodedVideoPacket (for signals) ----------------
 struct EncodedVideoPacket {
@@ -102,6 +102,7 @@ struct AppConfig {
     QList<StreamConfig> streamConfigs;
     quint16 httpPort = 8090;
     int displayMode = 0;
+    int autostart = 0;
     float prebufferingTime = 5;
 };
 
@@ -136,7 +137,16 @@ inline static bool loadConfigFile(const QString &path,
                 config.displayMode = p;
         }
 
-        /// Display Mode
+        /// Auto start stream
+        config.autostart = 0;
+        if (j.contains("autostart") && j["autostart"].is_number_integer()) {
+            int p = j["autostart"].get<int>();
+            if (p > 0 && p <= 1)
+                config.autostart = p;
+        }
+
+
+        /// Pre buffering Time
         config.prebufferingTime = 5.0;
         if (j.contains("pre_buffering_time") && j["pre_buffering_time"].is_number_float()) {
             config.prebufferingTime = j["pre_buffering_time"].get<float>();

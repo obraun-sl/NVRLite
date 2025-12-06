@@ -11,6 +11,9 @@ int main(int argc, char *argv[]) {
     avformat_network_init();
 
     QCoreApplication app(argc, argv);
+    app.setApplicationName("NVRLite");
+    app.setApplicationVersion(APP_VERSION);
+    qDebug()<<" Version "<<APP_VERSION;
 
     // --config <file> ---
     QString configPath;
@@ -44,6 +47,7 @@ int main(int argc, char *argv[]) {
 
     QList<RtspCaptureThread*> captureThreads;
     QHash<QString, Mp4RecorderWorker*> recorders;
+    QHash<QString, RtspCaptureThread*> captureById;
     QList<QThread*> recorderThreads;
     QStringList streamIds;
 
@@ -55,7 +59,8 @@ int main(int argc, char *argv[]) {
 
         auto *cap = new RtspCaptureThread(streamId, url, &app);
         cap->setWithUserInterface((bool)mAppConfig.displayMode);
-        captureThreads << cap;
+        captureThreads << cap; /// Add in list for display
+        captureById.insert(streamId, cap); /// Add in Hash for Http Connection
 
         // Recorder worker + recorder thread
         QThread *recThread = new QThread(&app);
@@ -119,6 +124,19 @@ int main(int argc, char *argv[]) {
         QObject::connect(recWorker, &Mp4RecorderWorker::recordingStopped,
                          &httpServer, &HttpDataServer::onRecordingStopped,
                          Qt::QueuedConnection);
+    }
+
+    // HTTP -> Capture threads: stream start/stop
+    for (const auto &streamId : streamIds) {
+        RtspCaptureThread *cap = captureById.value(streamId, nullptr);
+        if (!cap) continue;
+        QObject::connect(&httpServer, &HttpDataServer::startStreamRequested,
+                         cap, &RtspCaptureThread::onStreamStartRequested, Qt::QueuedConnection);
+        QObject::connect(&httpServer, &HttpDataServer::stopStreamRequested,
+                         cap, &RtspCaptureThread::onStreamStopRequested, Qt::QueuedConnection);
+
+        if (mAppConfig.autostart==1)
+           cap->onStreamStartRequested(streamId);
     }
 
     // Start HTTP server

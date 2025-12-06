@@ -33,9 +33,14 @@ signals:
     void stopped();
     void requestServed(quint64 bytes);   // emitted on successful GET /data
 
-    // NEW: control recording for a given stream
+    // These are emitted when HTTP /record/start or /record/stop is called.
     void startRecordingRequested(const QString& streamId);
     void stopRecordingRequested(const QString& streamId);
+
+    // These are emitted when HTTP /stream/start or /stream/stop is called.
+    void startStreamRequested(const QString &streamId);
+    void stopStreamRequested(const QString &streamId);
+
 
 public slots:
     // Connect these slots to your Mp4RecorderWorker signals:

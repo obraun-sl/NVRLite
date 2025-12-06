@@ -1,9 +1,11 @@
 {
   "streams": [
-    { "id": "cam01", "url": "rtsp://192.168.1.10:8554/live/" },
-    { "id": "cam02", "url": "rtsp://192.168.1.11:8554/live/" }
+    { "id": "cam01", "url": "rtsp://192.168.6.252:8554/live/" },
+    { "id": "cam02", "url": "rtsp://192.168.6.254:8554/live/" },
+    { "id": "cam03", "url": "rtsp://192.168.6.255:8554/live/" }
   ],
   "http_port": 8090,
+  "autostart":0,
   "display_mode":1,
   "pre_buffering_time":5.0
 }

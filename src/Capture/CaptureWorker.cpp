@@ -17,8 +17,34 @@ RtspCaptureThread::~RtspCaptureThread() {
     closeInput();
 }
 
+void RtspCaptureThread::onStreamStartRequested(const QString &streamId)
+{
+    if (streamId != m_streamId)
+        return;
+    m_enableStreaming.storeRelease(1);
+    qInfo() << "[CAP]" << m_streamId << "streaming ENABLED via HTTP";
+}
+
+void RtspCaptureThread::onStreamStopRequested(const QString &streamId)
+{
+    if (streamId != m_streamId)
+        return;
+
+    m_enableStreaming.storeRelease(0);
+    {
+        QMutexLocker locker(&guard);
+        closeInput();
+        if (m_online) {
+            m_online = false;
+            emit streamOnlineChanged(m_streamId, false);
+        }
+    }
+    qInfo() << "[CAP]" << m_streamId << "streaming DISABLED via HTTP";
+}
+
 bool RtspCaptureThread::openInput() {
     closeInput();
+
 
     AVDictionary *opts = nullptr;
     av_dict_set(&opts, "rtsp_transport", "tcp", 0);
@@ -188,11 +214,31 @@ void RtspCaptureThread::run() {
 
     // We'll reuse a "NO SIGNAL" frame; size might adjust after first successful open
     cv::Mat noSignal = makeNoSignalFrame(m_width, m_height);
+    emit frameReady(m_streamId, noSignal.clone());
+
 
     using clock = std::chrono::steady_clock;
 
     while (!m_abort.loadAcquire()) {
 
+        // If streaming is disabled, ensure we are offline and idle
+        if (!m_enableStreaming.loadAcquire()) {
+            QMutexLocker locker(&guard);
+            if (m_fmtCtx) {
+                closeInput();
+            }
+            if (m_online) {
+                m_online = false;
+                emit streamOnlineChanged(m_streamId, false);
+            }
+            cv::Mat noSignal = makeNoSignalFrame(m_width, m_height);
+            emit frameReady(m_streamId, noSignal.clone());
+            QThread::msleep(100);
+            continue;
+        }
+        else
+        {
+        QMutexLocker locker(&guard);
         // Ensure RTSP is open. If not, attempt every 5 seconds and show NO SIGNAL
         if (!m_fmtCtx) {
             if (!openInput()) {
@@ -203,10 +249,7 @@ void RtspCaptureThread::run() {
 
                 // Build a NO SIGNAL frame with our current notion of size
                 noSignal = makeNoSignalFrame(m_width, m_height);
-
-                qWarning() << "[CAP]" << m_streamId
-                           << "will retry RTSP in 5 seconds";
-
+                qWarning() << "[CAP]" << m_streamId << "will retry RTSP in 5 seconds";
                 auto startWait    = clock::now();
                 auto lastEmit     = startWait;
                 const int fpsNoSignal = 5;     // NO SIGNAL frame rate
@@ -226,7 +269,7 @@ void RtspCaptureThread::run() {
 
                     QThread::msleep(10);
                 }
-                continue; // retry openInput()
+                continue; // will retry openInput()
             } else {
                 // Just successfully opened
                 if (!m_online) {
@@ -239,135 +282,141 @@ void RtspCaptureThread::run() {
         }
 
         // Normal streaming loop
-        int ret = av_read_frame(m_fmtCtx, pkt);
-        if (ret < 0) {
-            qWarning() << "[CAP]" << m_streamId
-                       << "av_read_frame error:" << ret
-                       << " -> closing and will retry";
-            closeInput();
-            if (m_online) {
-                m_online = false;
-                emit streamOnlineChanged(m_streamId, false);
-            }
-            continue; // go back to reconnect logic
-        }
-
-        if (pkt->stream_index != m_videoStreamIndex) {
-            av_packet_unref(pkt);
-            continue;
-        }
-
-        // Build EncodedVideoPacket for recorder
-        EncodedVideoPacket evp;
-        evp.streamId = m_streamId;   // if you include this field; if not, remove
-        evp.data = QByteArray(reinterpret_cast<const char*>(pkt->data),
-                              pkt->size);
-        evp.pts      = pkt->pts;
-        evp.dts      = pkt->dts;
-        evp.duration = pkt->duration;
-        evp.key = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-        evp.time_base = m_fmtCtx->streams[m_videoStreamIndex]->time_base;
-        emit videoPacketReady(evp);
-
-        // Decode for display
-        ret = avcodec_send_packet(m_codecCtx, pkt);
-        av_packet_unref(pkt);
-        if (ret < 0) {
-            qWarning() << "[CAP]" << m_streamId
-                       << "avcodec_send_packet failed:" << ret;
-            continue;
-        }
-
-
-        while (ret >= 0 && !m_abort.loadAcquire()) {
-            ret = avcodec_receive_frame(m_codecCtx, frame);
-            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
-                break;
+        if (m_online)
+        {
+            int ret = av_read_frame(m_fmtCtx, pkt);
             if (ret < 0) {
                 qWarning() << "[CAP]" << m_streamId
-                           << "avcodec_receive_frame failed:" << ret;
-                break;
+                           << "av_read_frame error:" << ret
+                           << " -> closing and will retry";
+                closeInput();
+                if (m_online) {
+                    m_online = false;
+                    emit streamOnlineChanged(m_streamId, false);
+                }
+                continue; // go back to reconnect logic
             }
 
-            // Initialize swscale *here* once we know real size/format
-            if (!m_swsCtx) {
-                m_width     = frame->width;
-                m_height    = frame->height;
-                m_srcPixFmt = static_cast<AVPixelFormat>(frame->format);
+            if (pkt->stream_index != m_videoStreamIndex) {
+                av_packet_unref(pkt);
+                continue;
+            }
 
-                qDebug() << "[CAP]" << m_streamId
-                         << "got first frame:"
-                         << "w=" << m_width
-                         << "h=" << m_height
-                         << "fmt=" << m_srcPixFmt;
+            // Build EncodedVideoPacket for recorder
+            EncodedVideoPacket evp;
+            evp.streamId = m_streamId;   // if you include this field; if not, remove
+            evp.data = QByteArray(reinterpret_cast<const char*>(pkt->data),
+                                  pkt->size);
+            evp.pts      = pkt->pts;
+            evp.dts      = pkt->dts;
+            evp.duration = pkt->duration;
+            evp.key = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+            evp.time_base = m_fmtCtx->streams[m_videoStreamIndex]->time_base;
+            emit videoPacketReady(evp);
 
-                // Notify recorder about stream info (time_base + codec id are known)
-                StreamInfo info;
-                info.streamId = m_streamId;
-                info.width    = m_width;  // may still be 0
-                info.height   = m_height;
-                info.timeBase = evp.time_base;
-                info.codecId  = m_codecCtx->codec_id;
+            // Decode for display
+            ret = avcodec_send_packet(m_codecCtx, pkt);
+            av_packet_unref(pkt);
+            if (ret < 0) {
+                qWarning() << "[CAP]" << m_streamId
+                           << "avcodec_send_packet failed:" << ret;
+                continue;
+            }
 
-                // Prefer extradata from codec context if available
-                if (m_codecCtx->extradata && m_codecCtx->extradata_size > 0) {
-                    info.extradata = QByteArray(
-                                reinterpret_cast<const char*>(m_codecCtx->extradata),
-                                m_codecCtx->extradata_size
-                                );
-                } else {
-                    // Fallback: try the stream codecpar
-                    AVStream *vs = m_fmtCtx->streams[m_videoStreamIndex];
-                    AVCodecParameters *par = vs->codecpar;
-                    if (par->extradata && par->extradata_size > 0) {
+
+            while (ret >= 0 && !m_abort.loadAcquire()) {
+                ret = avcodec_receive_frame(m_codecCtx, frame);
+                if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
+                    break;
+                if (ret < 0) {
+                    qWarning() << "[CAP]" << m_streamId
+                               << "avcodec_receive_frame failed:" << ret;
+                    break;
+                }
+
+                // Initialize swscale *here* once we know real size/format
+                if (!m_swsCtx) {
+                    m_width     = frame->width;
+                    m_height    = frame->height;
+                    m_srcPixFmt = static_cast<AVPixelFormat>(frame->format);
+
+                    qDebug() << "[CAP]" << m_streamId
+                             << "got first frame:"
+                             << "w=" << m_width
+                             << "h=" << m_height
+                             << "fmt=" << m_srcPixFmt;
+
+                    // Notify recorder about stream info (time_base + codec id are known)
+                    StreamInfo info;
+                    info.streamId = m_streamId;
+                    info.width    = m_width;  // may still be 0
+                    info.height   = m_height;
+                    info.timeBase = evp.time_base;
+                    info.codecId  = m_codecCtx->codec_id;
+
+                    // Prefer extradata from codec context if available
+                    if (m_codecCtx->extradata && m_codecCtx->extradata_size > 0) {
                         info.extradata = QByteArray(
-                                    reinterpret_cast<const char*>(par->extradata),
-                                    par->extradata_size
+                                    reinterpret_cast<const char*>(m_codecCtx->extradata),
+                                    m_codecCtx->extradata_size
                                     );
                     } else {
-                        info.extradata.clear();
+                        // Fallback: try the stream codecpar
+                        AVStream *vs = m_fmtCtx->streams[m_videoStreamIndex];
+                        AVCodecParameters *par = vs->codecpar;
+                        if (par->extradata && par->extradata_size > 0) {
+                            info.extradata = QByteArray(
+                                        reinterpret_cast<const char*>(par->extradata),
+                                        par->extradata_size
+                                        );
+                        } else {
+                            info.extradata.clear();
+                        }
+                    }
+
+                    emit streamInfoReady(info);
+
+                    m_swsCtx = sws_getContext(
+                                m_width, m_height, m_srcPixFmt,
+                                m_width, m_height, m_dstPixFmt,
+                                SWS_BILINEAR, nullptr, nullptr, nullptr
+                                );
+
+                    if (!m_swsCtx) {
+                        qWarning() << "[CAP]" << m_streamId
+                                   << "sws_getContext failed on first frame";
+                        break;
                     }
                 }
 
-                emit streamInfoReady(info);
 
-                m_swsCtx = sws_getContext(
-                            m_width, m_height, m_srcPixFmt,
-                            m_width, m_height, m_dstPixFmt,
-                            SWS_BILINEAR, nullptr, nullptr, nullptr
-                            );
+                /// Only necessary when UserInterface is needed.
+                /// Save some CPU usage
+                if (m_userInterface)
+                {
+                    cv::Mat bgr(m_height, m_width, CV_8UC3);
+                    uint8_t *dstData[4]    = { bgr.data, nullptr, nullptr, nullptr };
+                    int      dstLinesize[4] = { static_cast<int>(bgr.step), 0, 0, 0 };
 
-                if (!m_swsCtx) {
-                    qWarning() << "[CAP]" << m_streamId
-                               << "sws_getContext failed on first frame";
-                    break;
+                    sws_scale(m_swsCtx,
+                              frame->data,
+                              frame->linesize,
+                              0,
+                              m_height,
+                              dstData,
+                              dstLinesize);
+
+                    emit frameReady(m_streamId, bgr);
                 }
+
             }
-
-
-            /// Only necessary when UserInterface is needed.
-            /// Save some CPU usage
-            if (m_userInterface)
-            {
-                cv::Mat bgr(m_height, m_width, CV_8UC3);
-                uint8_t *dstData[4]    = { bgr.data, nullptr, nullptr, nullptr };
-                int      dstLinesize[4] = { static_cast<int>(bgr.step), 0, 0, 0 };
-
-                sws_scale(m_swsCtx,
-                          frame->data,
-                          frame->linesize,
-                          0,
-                          m_height,
-                          dstData,
-                          dstLinesize);
-
-                emit frameReady(m_streamId, bgr);
-            }
-
         }
 
+        }
+        QThread::usleep(1000);
     }
 
+    QMutexLocker locker(&guard);
     closeInput();
     av_packet_free(&pkt);
     av_frame_free(&frame);

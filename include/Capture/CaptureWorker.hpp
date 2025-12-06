@@ -37,6 +37,11 @@ signals:
 protected:
     void run() override;
 
+public slots:
+    // Called via HttpHanlder when /stream/start or /stream/stop is hit
+    void onStreamStartRequested(const QString &streamId);
+    void onStreamStopRequested(const QString &streamId);
+
 private:
     bool openInput();
     void closeInput();
@@ -59,6 +64,11 @@ private:
     QAtomicInteger<int> m_abort{0};
     bool           m_online{false};
     bool           m_userInterface{false};
+
+    QAtomicInteger<int> m_enableStreaming{0}; // 1=enabled, 0=disabled
+
+    QMutex guard;
+
 };
 
 #endif /* __CaptureWorker_H__ */

@@ -28,6 +28,21 @@ bool HttpDataServer::start(const QString& host, quint16 port) {
 
     using json = sl::json;
 
+
+        // Small helper to extract a stream id / cam id from JSON
+      auto extractStreamId = [](const json &j, std::string &idOut, std::string &errMsg) -> bool {
+          if (j.contains("stream_id") && j["stream_id"].is_string()) {
+              idOut = j["stream_id"].get<std::string>();
+              return true;
+          }
+          if (j.contains("cam_id") && j["cam_id"].is_string()) {
+              idOut = j["cam_id"].get<std::string>();
+              return true;
+          }
+          errMsg = "Missing or invalid 'stream_id' / 'cam_id'";
+          return false;
+      };
+
     // ---------- ROUTES ----------
 
     // 1) POST /record/start
@@ -65,7 +80,7 @@ bool HttpDataServer::start(const QString& host, quint16 port) {
         res.set_content(body, "application/json");
     });
 
-    // 3) POST /record/stop
+    // 2) POST /record/stop
     //    Body: { "stream_id": "stream_1" }
     //    Response: { "status": "ok", "stream_id": "...", "file": "path/to/file.mp4" }
     //              or { "status": "error", "message": "..." }
@@ -118,6 +133,73 @@ bool HttpDataServer::start(const QString& host, quint16 port) {
         std::string body = response.dump();
         res.set_content(body, "application/json");
     });
+
+
+    // --- POST /stream/start
+    // Body: { "stream_id": "stream_1" }
+    // Emits: startStreamRequested(QString)
+    m_server.Post("/stream/start", [this](const httplib::Request& req, httplib::Response& res) {
+        json response;
+        response["status"] = "error";
+         try {
+            auto j = json::parse(req.body);
+            std::string sid;
+            std::string err;
+            if (!j.contains("stream_id") || !j["stream_id"].is_string()) {
+                response["message"] = "Missing or invalid 'stream_id'";
+                res.status = 400;
+            } else {
+                sid = j["stream_id"];
+                QString streamId = QString::fromStdString(sid);
+                if (mVerboseLevel > 0) {
+                    qDebug() << "[HTTP] POST /stream/start for stream:" << streamId;
+                }
+                emit startStreamRequested(streamId);
+                response["status"] = "ok";
+                response["stream_id"] = sid;
+                res.status = 200;
+            }
+        } catch (const std::exception& e) {
+            response["message"] = std::string("JSON parse error: ") + e.what();
+            res.status = 400;
+        }
+        res.set_content(response.dump(), "application/json");
+    });
+
+
+     // --- POST /stream/stop
+     // Body: { "stream_id": "stream_1" }
+     // Emits: stopStreamRequested(QString)
+     m_server.Post("/stream/stop", [this](const httplib::Request& req, httplib::Response& res) {
+         json response;
+         response["status"] = "error";
+
+         try {
+             auto j = json::parse(req.body);
+             std::string sid;
+             std::string err;
+             if (!j.contains("stream_id") || !j["stream_id"].is_string()) {
+                 response["message"] = "Missing or invalid 'stream_id'";
+                 res.status = 400;
+             } else {
+                 sid = j["stream_id"];
+                 QString streamId = QString::fromStdString(sid);
+                 if (mVerboseLevel > 0) {
+                     qDebug() << "[HTTP] POST /stream/stop for stream:" << streamId;
+                 }
+
+                 emit stopStreamRequested(streamId);
+                 response["status"] = "ok";
+                 response["stream_id"] = sid;
+                 res.status = 200;
+             }
+         } catch (const std::exception& e) {
+             response["message"] = std::string("JSON parse error: ") + e.what();
+             res.status = 400;
+         }
+         res.set_content(response.dump(), "application/json");
+     });
+
 
     // Default 404
     m_server.set_error_handler([](const httplib::Request&, httplib::Response& res) {

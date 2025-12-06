@@ -224,6 +224,7 @@ The config file must be formatted the following way :
     { "id": "<name_of_camera>", "url": "<url>" }
   ],
   "http_port": 8090,
+  "autostart":0,
   "display_mode":0,
   "pre_buffering_time":5.0
 }
@@ -232,6 +233,7 @@ The config file must be formatted the following way :
 
 - `streams` contains the list of rtsp stream and associated name
 - `http_port` defines the REST API port to contact (0 - 65535)
+- `autostart` defines if the stream must start at launch
 - `display_mode` defines if the display grid is visible  ( 0 = off, 1 = on)
 - `pre_buffering_time` defines the time to buffer the packet stream when start is called in seconds ( i.e. will save the last N seconds in the mp4 when the start call is made). This is used to compensate latency
 
@@ -292,8 +294,9 @@ If correct, the response will be
 
 ## 8. Roadmap
 
+- Stream Start/Stop control and autostart
 - MQTT controls
-- ONVIF device discovery and PTZ control
+- ONVIF device discovery
 - Metadata overlay (timestamps, camera name, etc.)
 - Export / share segments via HTTP
 
