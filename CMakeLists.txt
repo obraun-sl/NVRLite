@@ -56,6 +56,8 @@ FILE(GLOB_RECURSE SRC_FILES src/*.c*)
 FILE(GLOB_RECURSE HDR_FILES include/*.h*)
 
 add_executable(${PROJECT_NAME} ${SRC_FILES} ${HDR_FILES})
+add_custom_target(external ALL SOURCES ./ReleaseNotes.md ./README.md)
+
 target_link_libraries(${PROJECT_NAME}
     PkgConfig::FFMPEG
     ${OpenCV_LIBS}

@@ -29,8 +29,9 @@ extern "C" {
 #include <QFile>
 #include "Http/json.hpp"   // from nlohmann::json
 #include <QDebug>
+#include <QDir>
 
-#define APP_VERSION "0.2.0"
+#define APP_VERSION "0.2.1"
 
 // ---------------- EncodedVideoPacket (for signals) ----------------
 struct EncodedVideoPacket {
@@ -104,6 +105,8 @@ struct AppConfig {
     int displayMode = 0;
     int autostart = 0;
     float prebufferingTime = 5;
+    float postbufferingTime = 0.5;
+    QString rec_base_folder = "./";
 };
 
 inline static bool loadConfigFile(const QString &path,
@@ -117,9 +120,25 @@ inline static bool loadConfigFile(const QString &path,
 
     QByteArray data = file.readAll();
     file.close();
-
+    qDebug()<<"[CFG] Reading config file  = "<<file.fileName();
     try {
         sl::json j = sl::json::parse(data.constData());
+
+
+        // rec_base_folder (optional, default 8090)
+        config.rec_base_folder = "./";
+        if (j.contains("rec_base_folder") && j["rec_base_folder"].is_string()) {
+            config.rec_base_folder = QString::fromStdString(j["rec_base_folder"].get<std::string>());
+            QDir t_dir  = QDir(config.rec_base_folder);
+            if (!t_dir.exists())
+            {
+                bool r = QDir().mkdir(config.rec_base_folder);
+                if (r)
+                    qDebug()<<"[CFG] Creating DIR = "<<config.rec_base_folder;
+                else
+                    qDebug()<<"[CFG] ERROR : Cannot create DIR = "<<config.rec_base_folder;
+            }
+        }
 
         // http_port (optional, default 8090)
         config.httpPort = 8090;
@@ -128,6 +147,8 @@ inline static bool loadConfigFile(const QString &path,
             if (p > 0 && p <= 65535)
                 config.httpPort = static_cast<quint16>(p);
         }
+        else
+            qWarning() << "[CFG] http_port entry not found in config. Using Default = "<<config.httpPort;
 
         /// Display Mode
         config.displayMode = 0;
@@ -136,6 +157,8 @@ inline static bool loadConfigFile(const QString &path,
             if (p > 0 && p <= 1)
                 config.displayMode = p;
         }
+        else
+          qWarning() << "[CFG] display_mode entry not found in config. Using Default = "<<config.displayMode;
 
         /// Auto start stream
         config.autostart = 0;
@@ -144,6 +167,8 @@ inline static bool loadConfigFile(const QString &path,
             if (p > 0 && p <= 1)
                 config.autostart = p;
         }
+        else
+          qWarning() << "[CFG] autostart entry not found in config. Using Default = "<<config.autostart;
 
 
         /// Pre buffering Time
@@ -151,7 +176,16 @@ inline static bool loadConfigFile(const QString &path,
         if (j.contains("pre_buffering_time") && j["pre_buffering_time"].is_number_float()) {
             config.prebufferingTime = j["pre_buffering_time"].get<float>();
         }
+        else
+          qWarning() << "[CFG] pre_buffering_time entry not found in config. Using Default = "<<config.prebufferingTime;
 
+        /// Post buffering Time
+        config.postbufferingTime = 0.5;
+        if (j.contains("post_buffering_time") && j["post_buffering_time"].is_number_float()) {
+            config.postbufferingTime = j["post_buffering_time"].get<float>();
+        }
+        else
+          qWarning() << "[CFG] post_buffering_time entry not found in config. Using Default = "<<config.postbufferingTime;
 
         // streams array
         if (!j.contains("streams") || !j["streams"].is_array()) {

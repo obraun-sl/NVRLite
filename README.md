@@ -226,7 +226,9 @@ The config file must be formatted the following way :
   "http_port": 8090,
   "autostart":0,
   "display_mode":0,
-  "pre_buffering_time":5.0
+  "pre_buffering_time":5.0,
+  "post_buffering_time":0.5,
+  "rec_base_folder":"/home/user/recordings/"   
 }
 ```
 
@@ -236,6 +238,10 @@ The config file must be formatted the following way :
 - `autostart` defines if the stream must start at launch
 - `display_mode` defines if the display grid is visible  ( 0 = off, 1 = on)
 - `pre_buffering_time` defines the time to buffer the packet stream when start is called in seconds ( i.e. will save the last N seconds in the mp4 when the start call is made). This is used to compensate latency
+- `post_buffering_time` defines the time to keep recording when stop is called (in seconds) ( i.e. will save N seconds more in the mp4 when the stop call is made)
+- `rec_base_folder` defines the folder to save MP4. Will be created if does not exist
+
+Note : Granularity of time is ms inside the app. 
 
 See provided example.json
  

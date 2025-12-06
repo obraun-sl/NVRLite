@@ -45,7 +45,7 @@ public slots:
 private:
     bool openInput();
     void closeInput();
-    cv::Mat makeNoSignalFrame(int w, int h);
+    cv::Mat makeNoSignalFrame(int w, int h,QString);
 
 private:
     QString m_streamId;

@@ -19,6 +19,7 @@ RtspCaptureThread::~RtspCaptureThread() {
 
 void RtspCaptureThread::onStreamStartRequested(const QString &streamId)
 {
+    qInfo() << "[CAP]" << m_streamId << "{onStreamStartRequested} handle START"<<streamId;
     if (streamId != m_streamId)
         return;
     m_enableStreaming.storeRelease(1);
@@ -27,6 +28,7 @@ void RtspCaptureThread::onStreamStartRequested(const QString &streamId)
 
 void RtspCaptureThread::onStreamStopRequested(const QString &streamId)
 {
+    qInfo() << "[CAP]" << m_streamId << "{onStreamStopRequested} handle STOP "<<streamId;
     if (streamId != m_streamId)
         return;
 
@@ -186,10 +188,10 @@ void RtspCaptureThread::closeInput() {
     m_videoStreamIndex = -1;
 }
 
-cv::Mat RtspCaptureThread::makeNoSignalFrame(int w, int h) {
+cv::Mat RtspCaptureThread::makeNoSignalFrame(int w, int h,QString text) {
     cv::Mat img(h, w, CV_8UC3, cv::Scalar(40, 40, 40)); // dark gray
     cv::putText(img,
-                "NO SIGNAL",
+                text.toStdString(),
                 cv::Point(w/8, h/2),
                 cv::FONT_HERSHEY_SIMPLEX,
                 1.5,
@@ -213,7 +215,7 @@ void RtspCaptureThread::run() {
     }
 
     // We'll reuse a "NO SIGNAL" frame; size might adjust after first successful open
-    cv::Mat noSignal = makeNoSignalFrame(m_width, m_height);
+    cv::Mat noSignal = makeNoSignalFrame(m_width, m_height,"NO SIGNAL");
     emit frameReady(m_streamId, noSignal.clone());
 
 
@@ -223,15 +225,18 @@ void RtspCaptureThread::run() {
 
         // If streaming is disabled, ensure we are offline and idle
         if (!m_enableStreaming.loadAcquire()) {
-            QMutexLocker locker(&guard);
-            if (m_fmtCtx) {
-                closeInput();
+            ///Protect this section (but not the sleep)
+            {
+                QMutexLocker locker(&guard);
+                if (m_fmtCtx) {
+                    closeInput();
+                }
+                if (m_online) {
+                    m_online = false;
+                    emit streamOnlineChanged(m_streamId, false);
+                }
             }
-            if (m_online) {
-                m_online = false;
-                emit streamOnlineChanged(m_streamId, false);
-            }
-            cv::Mat noSignal = makeNoSignalFrame(m_width, m_height);
+            cv::Mat noSignal = makeNoSignalFrame(m_width, m_height,"NO SIGNAL");
             emit frameReady(m_streamId, noSignal.clone());
             QThread::msleep(100);
             continue;
@@ -241,6 +246,8 @@ void RtspCaptureThread::run() {
         QMutexLocker locker(&guard);
         // Ensure RTSP is open. If not, attempt every 5 seconds and show NO SIGNAL
         if (!m_fmtCtx) {
+            noSignal = makeNoSignalFrame(m_width, m_height,"ACQUIRING");
+            emit frameReady(m_streamId, noSignal.clone());
             if (!openInput()) {
                 if (m_online) {
                     m_online = false;
@@ -248,7 +255,7 @@ void RtspCaptureThread::run() {
                 }
 
                 // Build a NO SIGNAL frame with our current notion of size
-                noSignal = makeNoSignalFrame(m_width, m_height);
+                noSignal = makeNoSignalFrame(m_width, m_height,"STREAM FAILED");
                 qWarning() << "[CAP]" << m_streamId << "will retry RTSP in 5 seconds";
                 auto startWait    = clock::now();
                 auto lastEmit     = startWait;
@@ -276,8 +283,6 @@ void RtspCaptureThread::run() {
                     m_online = true;
                     emit streamOnlineChanged(m_streamId, true);
                 }
-                // Adjust no-signal to match actual size
-                noSignal = makeNoSignalFrame(m_width, m_height);
             }
         }
 

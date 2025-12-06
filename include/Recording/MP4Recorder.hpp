@@ -11,6 +11,7 @@ public:
     explicit Mp4RecorderWorker(const QString &streamId, QObject *parent = nullptr)
         : QObject(parent), m_streamId(streamId) {
         m_infoReady=false;
+        mFolder = "./";
     }
 
 signals:
@@ -18,8 +19,10 @@ signals:
     void recordingStopped(const QString &streamId);
 
 public slots:
-
+    void setFolderBase(QString path) { mFolder = path;}
     void setPreBufferingTime(float c) { pre_buffering_time = c;}
+    void setPosteBufferingTime(float c) { post_buffering_time = c;}
+
 
     void onStreamInfo(const StreamInfo &info)
     {
@@ -71,7 +74,7 @@ public slots:
             return;
         }
 
-        QString filename = makeRecordFilename(m_streamId);
+        QString filename = makeRecordFilename(m_streamId,mFolder);
 
         if (avformat_alloc_output_context2(&m_outCtx, nullptr, "mp4",
                                            filename.toUtf8().constData()) < 0 || !m_outCtx) {
@@ -137,24 +140,47 @@ public slots:
         if (!m_recording)
             return;
 
-        if (m_outCtx) {
-            av_write_trailer(m_outCtx);
-            if (!(m_outCtx->oformat->flags & AVFMT_NOFILE)) {
-                avio_closep(&m_outCtx->pb);
-            }
-            if (m_outStream && m_outStream->codecpar && m_outStream->codecpar->extradata) {
-                av_freep(&m_outStream->codecpar->extradata);
-            }
-            avformat_free_context(m_outCtx);
+        // If no post-buffering requested, stop immediately
+        if (post_buffering_time <= 0.0f) {
+            finalizeRecording();
+            return;
         }
 
-        m_outCtx = nullptr;
-        m_outStream = nullptr;
-        m_recStartPts = AV_NOPTS_VALUE;
-        m_recording = false;
+        // Already pending => no need to restart the timer
+        if (m_stopPending) {
+            qInfo() << "[REC]" << m_streamId
+                    << "stop already pending, ignoring duplicate stopRecording()";
+            return;
+        }
+
+        // Set up a delayed stop using a single-shot QTimer
+        if (!m_postStopTimer) {
+            m_postStopTimer = new QTimer(this);
+            m_postStopTimer->setSingleShot(true);
+            connect(m_postStopTimer, &QTimer::timeout,
+                    this, &Mp4RecorderWorker::onPostBufferTimeout);
+        }
+
+        m_stopPending = true;
+        int delayMs   = static_cast<int>(post_buffering_time * 1000.0f);
+        m_postStopTimer->start(delayMs);
+
+        qInfo() << "[REC]" << m_streamId
+                << "stop requested, will finalize after"
+                << post_buffering_time << "seconds";
+
 
         emit recordingStopped(m_streamId);
-        qInfo() << "[REC]" << m_streamId << "stopped recording";
+    }
+
+
+private slots:
+    void onPostBufferTimeout() {
+        // Called after post_buffering_time seconds in the recorder thread's event loop
+        if (m_recording && m_stopPending) {
+            qInfo() << "[REC]" << m_streamId << "post-buffer timeout, finalizing recording";
+            finalizeRecording();
+        }
     }
 
 private:
@@ -167,6 +193,7 @@ private:
     QByteArray m_extradata;
 
     float pre_buffering_time = 5.0;
+    float post_buffering_time = 1.0;
 
     bool           m_recording   = false;
     AVFormatContext *m_outCtx    = nullptr;
@@ -175,13 +202,22 @@ private:
 
     std::deque<EncodedVideoPacket> m_prebuffer;
 
-    static QString makeRecordFilename(const QString &streamId) {
+    QString mFolder = "./";
+
+
+    // For delayed stop
+    bool    m_stopPending   = false;
+    QTimer *m_postStopTimer = nullptr;
+
+private:
+
+    static QString makeRecordFilename(const QString &streamId,const QString folder) {
         std::time_t t = std::time(nullptr);
         std::tm tm_buf;
         localtime_r(&t, &tm_buf);
         char buf[64];
         std::strftime(buf, sizeof(buf), "%Y-%m-%d_%H-%M-%S", &tm_buf);
-        return QString("rec_%1_%2.mp4").arg(streamId, buf);
+        return QString("%1/rec_%2_%3.mp4").arg(folder,streamId, buf);
     }
 
     void writePacket(const EncodedVideoPacket &packet) {
@@ -229,6 +265,34 @@ private:
         if (wret < 0) {
             log_error("[REC] Error writing frame", wret);
         }
+    }
+
+    void finalizeRecording() {
+        if (!m_recording)
+            return;
+
+        if (m_outCtx) {
+            av_write_trailer(m_outCtx);
+            if (!(m_outCtx->oformat->flags & AVFMT_NOFILE)) {
+                avio_closep(&m_outCtx->pb);
+            }
+            if (m_outStream && m_outStream->codecpar && m_outStream->codecpar->extradata) {
+                av_freep(&m_outStream->codecpar->extradata);
+            }
+            avformat_free_context(m_outCtx);
+        }
+
+
+
+        if (m_postStopTimer && m_postStopTimer->isActive())
+            m_postStopTimer->stop();
+
+        m_outCtx       = nullptr;
+        m_outStream    = nullptr;
+        m_recStartPts  = AV_NOPTS_VALUE;
+        m_recording    = false;
+        m_stopPending  = false;
+        qInfo() << "[REC]" << m_streamId << "stopped recording";
     }
 };
 

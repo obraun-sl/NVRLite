@@ -65,6 +65,9 @@ int main(int argc, char *argv[]) {
         // Recorder worker + recorder thread
         QThread *recThread = new QThread(&app);
         Mp4RecorderWorker *recWorker = new Mp4RecorderWorker(streamId);
+        recWorker->setFolderBase(mAppConfig.rec_base_folder);
+        recWorker->setPreBufferingTime(mAppConfig.prebufferingTime);
+        recWorker->setPosteBufferingTime(mAppConfig.postbufferingTime);
         recWorker->moveToThread(recThread);
 
         QObject::connect(recThread, &QThread::finished,
