@@ -31,7 +31,7 @@ extern "C" {
 #include <QDebug>
 #include <QDir>
 
-#define APP_VERSION "0.2.1"
+#define APP_VERSION "0.2.2"
 
 // ---------------- EncodedVideoPacket (for signals) ----------------
 struct EncodedVideoPacket {
@@ -56,7 +56,6 @@ struct StreamInfo {
 
 Q_DECLARE_METATYPE(EncodedVideoPacket)
 Q_DECLARE_METATYPE(StreamInfo)
-
 Q_DECLARE_METATYPE(AVRational)
 
 

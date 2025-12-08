@@ -8,6 +8,7 @@
 #include <QHash>
 #include <atomic>
 #include <thread>
+#include <QSet>
 
 // cpp-httlib (header-only)
 #include "httplib.h"
@@ -41,6 +42,9 @@ signals:
     void startStreamRequested(const QString &streamId);
     void stopStreamRequested(const QString &streamId);
 
+private :
+    void createRoutes();
+
 
 public slots:
     // Connect these slots to your Mp4RecorderWorker signals:
@@ -48,6 +52,12 @@ public slots:
     //  Mp4RecorderWorker::recordingStopped(streamId)
     void onRecordingStarted(const QString& streamId, const QString& filePath);
     void onRecordingStopped(const QString& streamId);
+
+    // Connected to RtspCaptureThread::streamOnlineChanged(streamId, online) to get stream status
+    void onStreamOnlineChanged(const QString &streamId, bool online);
+
+    // Register a known stream ID (called from main/config loading)
+    void registerStream(const QString &streamId);
 
 private:
     using json = sl::json;
@@ -71,6 +81,9 @@ private:
     // Track last recording file per stream_id
     QReadWriteLock         m_filesLock;
     QHash<QString, QString> m_lastRecordingFile; // streamId -> filePath
+    QHash<QString, bool>    m_recordingState;    // streamId -> isRecording
+    QHash<QString, bool>    m_streamingState;    // streamId -> is streaming
+    QSet<QString>           m_knownStreams;      // all configured/known streams
 
     int mVerboseLevel = 0;
 };

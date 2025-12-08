@@ -86,11 +86,95 @@ See (6) for json configuration
 
 ---
 
-## 4. Recording Controls
+## 4. Controls
 
 ### 4.1 REST API
 
-#### 4.1.1 Start recording
+**Routes**
+- Start Stream : POST /stream/start
+- Stop Stream : POST /stream/stop
+- Start Record : POST /record/start
+- Stop Record : POST /record/stop
+- Get Status : GET /stream/status<?stream_id=xxxx>
+
+
+#### 4.1.1 Start streaming
+
+**Endpoint**
+
+```http
+POST /stream/start
+Content-Type: application/json
+```
+
+**Request body**
+
+```json
+{
+  "stream_id": "stream_1"
+}
+```
+
+**Behavior**
+
+- Parses JSON.
+- If `stream_id` is missing or not a string:
+  - Returns `400` and `{"status":"error","message":"Missing or invalid 'stream_id'"}`.
+- Otherwise:
+  - Emits Qt signal:
+
+    ```cpp
+    emit startStreamRequested(streamId);
+    ```
+
+  - Returns:
+
+    ```json
+    {
+      "status": "ok",
+      "stream_id": "stream_1"
+    }
+    ```
+
+#### 4.1.2 Stop streaming
+
+**Endpoint**
+
+```http
+POST /stream/stop
+Content-Type: application/json
+```
+
+**Request body**
+
+```json
+{
+  "stream_id": "stream_1"
+}
+```
+
+**Behavior**
+
+- Parses JSON.
+- If `stream_id` is missing or not a string:
+  - Returns `400` and `{"status":"error","message":"Missing or invalid 'stream_id'"}`.
+- Otherwise:
+  - Emits Qt signal:
+
+    ```cpp
+    emit stopStreamRequested(streamId);
+    ```
+
+  - Returns:
+
+    ```json
+    {
+      "status": "ok",
+      "stream_id": "stream_1"
+    }
+    ```
+
+#### 4.1.3 Start recording
 
 **Endpoint**
 
@@ -127,12 +211,8 @@ Content-Type: application/json
       "stream_id": "stream_1"
     }
     ```
-
-**Notes**
-
-- This **only triggers** the recording request. The actual MP4 file name is decided by `Mp4RecorderWorker` and reported back via `onRecordingStarted`.
-
-#### 4.1.2 Stop recording
+ 
+#### 4.1.4 Stop recording
 
 **Endpoint**
 
@@ -195,6 +275,46 @@ Content-Type: application/json
 with HTTP `400`.
 
 
+#### 4.1.5 Check stream/rec status
+
+**Endpoint**
+
+```http
+GET /stream/status
+Content-Type: application/json
+```
+
+
+**Behavior**
+
+  - Returns:
+
+In case of all streams (no filtering)
+    ```json
+    {
+      "status": "ok",
+      "streams": [
+        { "stream_id": "stream_1", "recording": true, "streaming":true,  "file": "rec_stream_1_....mp4" },
+        { "stream_id": "stream_2", "recording": false, "streaming":true, "file": null },
+        { "stream_id": "stream_3", "recording": false, "streaming":false, "file": null }
+      ]
+    }   
+    ```
+    
+In case of one single stream (endpoint : ?stream_id=<id>)
+    ```json     
+    {
+      "status": "ok",
+      "stream": {
+        "stream_id": "stream_1",
+        "recording": true,
+        "straming":true,
+        "file": "rec_stream_1_....mp4"
+      }
+    }
+    ```
+    
+
 ---
 
 ## 5. Display
@@ -250,8 +370,16 @@ See provided example.json
 2. Capture threads start and either:
    - connect to RTSP and start sending frames and packets, or
    - go into “retry every 5s” + NO SIGNAL display mode.
-3. OpenCV window shows all streams in a grid.
-4. To start recording for `stream_1`:
+3. OpenCV window shows all streams in a grid (if autostart)
+4. To start reading/streaming for `stream_1`:
+
+    ```bash
+    curl -X POST http://<ip>:<port>/stream/start \
+         -H "Content-Type: application/json" \
+         -d '{"stream_id":"stream_1"}'
+    ```
+    
+5. To start recording for `stream_1`:
 
    ```bash
    curl -X POST http://<ip>:<port>/record/start \
@@ -259,7 +387,7 @@ See provided example.json
         -d '{"stream_id":"stream_1"}'
    ```
 
-5. To stop recording and get the output file path:
+6. To stop recording and get the output file path:
 
    ```bash
    curl -X POST http://<ip>:<port>/record/stop \

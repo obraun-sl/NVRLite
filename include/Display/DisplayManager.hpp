@@ -21,6 +21,7 @@ public:
 
     ~DisplayManager()
     {
+        cv::destroyAllWindows();
         if (m_timer)
         {
             m_timer->stop();

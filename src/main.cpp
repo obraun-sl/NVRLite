@@ -99,8 +99,27 @@ int main(int argc, char *argv[]) {
         }
     }
 
+
+
+
+
     HttpDataServer httpServer;
     httpServer.setVerboseLevel(1);
+    // Register all known streams so /record/status always lists them
+    for (const auto &streamId : streamIds) {
+        QMetaObject::invokeMethod(&httpServer,
+                                  "registerStream",
+                                  Qt::QueuedConnection,
+                                  Q_ARG(QString, streamId));
+    }
+
+    // Capture -> HTTP server: streaming state
+    for (auto *cap : captureThreads) {
+        QObject::connect(cap, &RtspCaptureThread::streamOnlineChanged,
+             &httpServer, &HttpDataServer::onStreamOnlineChanged,
+            Qt::QueuedConnection);
+    }
+
 
     // For each streamId ==> recorder:
     for (const auto &streamId : streamIds) {
@@ -172,6 +191,5 @@ int main(int argc, char *argv[]) {
 
 
     avformat_network_deinit();
-    cv::destroyAllWindows();
     return 0;
 }

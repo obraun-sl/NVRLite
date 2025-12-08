@@ -1,5 +1,7 @@
 ## Release Notes
 
+#### v0.2.2
+- Add record/stream status in REST API (GET /stream/status(?stream_id=xxx))  
 
 #### v0.2.1
 - Change Nosig frame to specific text
@@ -12,7 +14,7 @@
 - Add REST control to start/stop stream 
 - Add autostart mode in json
 
-### 0.1.0
+#### 0.1.0
 - Initial Version
  
  
