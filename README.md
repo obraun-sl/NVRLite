@@ -290,7 +290,8 @@ Content-Type: application/json
   - Returns:
 
 In case of all streams (no filtering)
-    ```json
+
+  ```json
     {
       "status": "ok",
       "streams": [
@@ -299,10 +300,11 @@ In case of all streams (no filtering)
         { "stream_id": "stream_3", "recording": false, "streaming":false, "file": null }
       ]
     }   
-    ```
+  ```
     
 In case of one single stream (endpoint : ?stream_id=<id>)
-    ```json     
+
+  ```json     
     {
       "status": "ok",
       "stream": {
@@ -312,7 +314,7 @@ In case of one single stream (endpoint : ?stream_id=<id>)
         "file": "rec_stream_1_....mp4"
       }
     }
-    ```
+  ```
     
 
 ---
