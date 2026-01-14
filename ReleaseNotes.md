@@ -1,5 +1,8 @@
 ## Release Notes
 
+#### v0.2.3
+- Add support for Windows
+
 #### v0.2.2
 - Add record/stream status in REST API (GET /stream/status(?stream_id=xxx))  
 

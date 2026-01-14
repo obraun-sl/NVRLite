@@ -31,7 +31,7 @@ extern "C" {
 #include <QDebug>
 #include <QDir>
 
-#define APP_VERSION "0.2.2"
+#define APP_VERSION "0.2.3"
 
 // ---------------- EncodedVideoPacket (for signals) ----------------
 struct EncodedVideoPacket {
@@ -72,7 +72,11 @@ static QString format_epoch_us(int64_t epoch_us) {
     int usec = epoch_us % 1000000;
 
     std::tm tm_buf;
-    localtime_r(&sec, &tm_buf);   // or gmtime_r for UTC
+#if defined(_WIN32)
+    localtime_s(&tm_buf, &sec);
+#else
+    localtime_r(&sec, &tm_buf);
+#endif
 
     char timebuf[64];
     std::strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S", &tm_buf);
@@ -82,16 +86,27 @@ static QString format_epoch_us(int64_t epoch_us) {
     return QString::fromStdString(oss.str());
 }
 
-// helper: create a filename like "record_2025-11-29_12-58-03.mp4"
-inline static std::string make_record_filename() {
+// helper: create a filename like "rec_2025-11-29_12-58-03.mp4"
+static QString makeRecordFilename(const QString& streamId, const QString& folder)
+{
     std::time_t t = std::time(nullptr);
-    std::tm tm_buf;
+    std::tm tm_buf{};
+
+#if defined(_WIN32)
+    localtime_s(&tm_buf, &t);
+#else
     localtime_r(&t, &tm_buf);
+#endif
 
     char buf[64];
-    std::strftime(buf, sizeof(buf), "record_%Y-%m-%d_%H-%M-%S.mp4", &tm_buf);
-    return std::string(buf);
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d_%H-%M-%S", &tm_buf);
+
+    QString filename = QStringLiteral("rec_%1_%2.mp4").arg(streamId, buf);
+
+    // QDir takes care of the correct separator for the platform
+    return QDir(folder).filePath(filename);
 }
+
 
 struct StreamConfig {
     QString id;

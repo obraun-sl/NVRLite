@@ -4,6 +4,8 @@
 
 #include "Utils.hpp"
 #include <QDebug>
+#include <ctime>
+#include <QDir>
 
 class Mp4RecorderWorker : public QObject {
     Q_OBJECT
@@ -213,12 +215,18 @@ private:
 
     static QString makeRecordFilename(const QString &streamId,const QString folder) {
         std::time_t t = std::time(nullptr);
-        std::tm tm_buf;
+        std::tm tm_buf{};
+
+#if defined(_WIN32)
+        localtime_s(&tm_buf, &t);
+#else
         localtime_r(&t, &tm_buf);
+#endif
         char buf[64];
         std::strftime(buf, sizeof(buf), "%Y-%m-%d_%H-%M-%S", &tm_buf);
         return QString("%1/rec_%2_%3.mp4").arg(folder,streamId, buf);
     }
+
 
     void writePacket(const EncodedVideoPacket &packet) {
         if (!m_recording || !m_outCtx || !m_outStream) return;
