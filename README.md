@@ -1,6 +1,6 @@
 # NVRLite – Lightweight Multi-Camera RTSP NVR
 
-NVRLite is a Unix lightweight, Qt‑based Network Video Recorder designed to handle multiple RTSP video streams with:
+NVRLite is a cross-platform (Win/Linux), lightweight, Qt‑based Network Video Recorder designed to handle multiple RTSP video streams with:
 
 - Low‑latency preview via OpenCV
 - MP4 recording **without re‑encoding** (H.264 passthrough)
@@ -65,10 +65,18 @@ sudo apt install -y \
   build-essential cmake pkg-config
 ```
 
+### Manual install (Windows)
+
+- Use OpenCV and QT5 installer from website and provide path in cmake-gui
+
 ---
 
 
-## 3. Build Instructions
+## 3. Build & Run Instructions
+
+### Build
+
+#### Linux
 
 ```
 mkdir build
@@ -77,11 +85,29 @@ cmake ..
 make -j8
 ```
 
-Run:
+#### Windows
+
+- Use cmake-gui to generate the visual studio solution. 
+- Launch the solution in visual studio and select the release build
+
+
+
+### Run
+
+Open a terminal (cmd on windows) and launch the executable with the config json as parameters
+
+<b>Linux</b>
 
 ```
 ./NVRLite --config config.json
 ```
+
+<b>Win</b>
+
+```
+NVRLite.exe --config config.json
+```
+
 See (6) for json configuration
 
 ---
