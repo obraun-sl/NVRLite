@@ -225,7 +225,7 @@ void RtspCaptureThread::run() {
 
         // If streaming is disabled, ensure we are offline and idle
         if (!m_enableStreaming.loadAcquire()) {
-            ///Protect this section (but not the sleep)
+            // Protect this section (but not the sleep)
             {
                 QMutexLocker locker(&guard);
                 if (m_fmtCtx) {
@@ -234,8 +234,11 @@ void RtspCaptureThread::run() {
                 if (m_online) {
                     m_online = false;
                     emit streamOnlineChanged(m_streamId, false);
+                    if(mVerboseLevel>0)
+                        qDebug() << "[CAP]" << m_streamId << "==> Stream status changed to false";
                 }
             }
+            // Make a NOSIG image to display
             cv::Mat noSignal = makeNoSignalFrame(m_width, m_height,"NO SIGNAL");
             emit frameReady(m_streamId, noSignal.clone());
             QThread::msleep(100);
@@ -252,6 +255,8 @@ void RtspCaptureThread::run() {
                 if (m_online) {
                     m_online = false;
                     emit streamOnlineChanged(m_streamId, false);
+                    if(mVerboseLevel>0)
+                        qDebug() << "[CAP]" << m_streamId << "==> Stream status changed to false";
                 }
 
                 // Build a NO SIGNAL frame with our current notion of size
@@ -277,11 +282,16 @@ void RtspCaptureThread::run() {
                     QThread::msleep(10);
                 }
                 continue; // will retry openInput()
+                if(mVerboseLevel>0)
+                    qDebug() << "[CAP]" << m_streamId << "==> Will retry input loading";
+
             } else {
                 // Just successfully opened
                 if (!m_online) {
                     m_online = true;
                     emit streamOnlineChanged(m_streamId, true);
+                    if(mVerboseLevel>0)
+                        qDebug() << "[CAP]" << m_streamId << "==> Stream status changed to true";
                 }
             }
         }
@@ -418,7 +428,7 @@ void RtspCaptureThread::run() {
         }
 
         }
-        QThread::usleep(1000);
+        QThread::usleep(500);
     }
 
     QMutexLocker locker(&guard);
@@ -429,6 +439,8 @@ void RtspCaptureThread::run() {
     if (m_online) {
         m_online = false;
         emit streamOnlineChanged(m_streamId, false);
+        if(mVerboseLevel>0)
+            qDebug() << "[CAP]" << m_streamId << "==> Stream status changed to false";
     }
 
     qDebug() << "[CAP]" << m_streamId << "thread finished";

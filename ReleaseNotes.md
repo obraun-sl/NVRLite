@@ -1,5 +1,10 @@
 ## Release Notes
 
+#### v0.2.4
+- Add log_level option in json config file
+- Improve HTTP server for START/STOP rec response.
+- Add File removal and File status/listing in API REST
+
 #### v0.2.3
 - Add support for Windows
 

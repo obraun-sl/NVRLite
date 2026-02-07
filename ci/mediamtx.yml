@@ -1,0 +1,7 @@
+rtspAddress: :8554
+
+# allow publishing to any path (or specify only the ones you need)
+paths:
+  all:
+    source: publisher
+

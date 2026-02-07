@@ -59,6 +59,7 @@ int main(int argc, char *argv[]) {
 
         auto *cap = new RtspCaptureThread(streamId, url, &app);
         cap->setWithUserInterface((bool)mAppConfig.displayMode);
+        cap->setVerboseLevel(mAppConfig.loglevel);
         captureThreads << cap; /// Add in list for display
         captureById.insert(streamId, cap); /// Add in Hash for Http Connection
 
@@ -68,7 +69,9 @@ int main(int argc, char *argv[]) {
         recWorker->setFolderBase(mAppConfig.rec_base_folder);
         recWorker->setPreBufferingTime(mAppConfig.prebufferingTime);
         recWorker->setPosteBufferingTime(mAppConfig.postbufferingTime);
+        recWorker->setVerboseLevel(mAppConfig.loglevel);
         recWorker->moveToThread(recThread);
+
 
         QObject::connect(recThread, &QThread::finished,
                          recWorker, &QObject::deleteLater);
@@ -92,6 +95,7 @@ int main(int argc, char *argv[]) {
     if (mAppConfig.displayMode==1)
     {
         display = new DisplayManager(&recorders, streamIds);
+        display->setVerboseLevel(mAppConfig.loglevel);
         for (auto *cap : captureThreads) {
             QObject::connect(cap, &RtspCaptureThread::frameReady,
                              display, &DisplayManager::onFrame,
@@ -104,7 +108,8 @@ int main(int argc, char *argv[]) {
 
 
     HttpDataServer httpServer;
-    httpServer.setVerboseLevel(1);
+    httpServer.setVerboseLevel(mAppConfig.loglevel);
+    httpServer.setFolderBase(mAppConfig.rec_base_folder);
     // Register all known streams so /record/status always lists them
     for (const auto &streamId : streamIds) {
         QMetaObject::invokeMethod(&httpServer,

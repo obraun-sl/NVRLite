@@ -31,7 +31,7 @@ extern "C" {
 #include <QDebug>
 #include <QDir>
 
-#define APP_VERSION "0.2.3"
+#define APP_VERSION "0.2.4"
 
 // ---------------- EncodedVideoPacket (for signals) ----------------
 struct EncodedVideoPacket {
@@ -121,6 +121,7 @@ struct AppConfig {
     float prebufferingTime = 5;
     float postbufferingTime = 0.5;
     QString rec_base_folder = "./";
+    int loglevel=0; //0 = few log, 1 = medium, 2=high
 };
 
 inline static bool loadConfigFile(const QString &path,
@@ -138,6 +139,7 @@ inline static bool loadConfigFile(const QString &path,
     try {
         sl::json j = sl::json::parse(data.constData());
 
+        qDebug()<<"[CFG] Reading config  = "<< j.dump(1).c_str();
 
         // rec_base_folder (optional, default 8090)
         config.rec_base_folder = "./";
@@ -183,6 +185,16 @@ inline static bool loadConfigFile(const QString &path,
         }
         else
           qWarning() << "[CFG] autostart entry not found in config. Using Default = "<<config.autostart;
+
+
+        /// Verbose Mode
+        config.loglevel = 0;
+        if (j.contains("log_level") && j["log_level"].is_number_integer()) {
+            int p = j["log_level"].get<int>();
+            config.loglevel = p;
+        }
+        else
+            qWarning() << "[CFG] log_level entry not found in config. Using Default = "<<config.loglevel;
 
 
         /// Pre buffering Time

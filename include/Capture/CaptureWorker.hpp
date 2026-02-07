@@ -22,6 +22,11 @@ public:
         m_userInterface = c;
     }
 
+    void setVerboseLevel(int c)
+    {
+        mVerboseLevel = c;
+    }
+
 signals:
     // For recorder
     void streamInfoReady(const StreamInfo &info);
@@ -68,6 +73,8 @@ private:
     QAtomicInteger<int> m_enableStreaming{0}; // 1=enabled, 0=disabled
 
     QMutex guard;
+
+    int mVerboseLevel = 0;
 
 };
 

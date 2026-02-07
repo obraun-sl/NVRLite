@@ -16,6 +16,10 @@ public:
         mFolder = "./";
     }
 
+    void setVerboseLevel(int lvl){ mVerboseLevel = lvl; }
+
+
+
 signals:
     void recordingStarted(const QString &streamId, const QString &filePath);
     void recordingStopped(const QString &streamId);
@@ -80,12 +84,15 @@ public slots:
 
         if (avformat_alloc_output_context2(&m_outCtx, nullptr, "mp4",
                                            filename.toUtf8().constData()) < 0 || !m_outCtx) {
-            qWarning() << "[REC]" << m_streamId << "failed to alloc output context";
+            if(mVerboseLevel>0)
+                qWarning() << "[REC]" << m_streamId << "failed to alloc output context";
             return;
         }
 
         m_outStream = avformat_new_stream(m_outCtx, nullptr);
         if (!m_outStream) {
+            if(mVerboseLevel>0)
+                qWarning() << "[REC]" << m_streamId << "failed to alloc new stream";
             avformat_free_context(m_outCtx);
             m_outCtx = nullptr;
             return;
@@ -108,6 +115,8 @@ public slots:
 
         if (!(m_outCtx->oformat->flags & AVFMT_NOFILE)) {
             if (avio_open(&m_outCtx->pb, filename.toUtf8().constData(), AVIO_FLAG_WRITE) < 0) {
+                if(mVerboseLevel>0)
+                    qWarning() << "[REC]" << m_streamId << "failed to create REC file";
                 avformat_free_context(m_outCtx);
                 m_outCtx = nullptr;
                 m_outStream = nullptr;
@@ -117,6 +126,8 @@ public slots:
 
         if (avformat_write_header(m_outCtx, nullptr) < 0) {
             if (!(m_outCtx->oformat->flags & AVFMT_NOFILE)) {
+                if(mVerboseLevel>0)
+                    qWarning() << "[REC]" << m_streamId << "failed to write header to REC file";
                 avio_closep(&m_outCtx->pb);
             }
             avformat_free_context(m_outCtx);
@@ -211,6 +222,8 @@ private:
     bool    m_stopPending   = false;
     QTimer *m_postStopTimer = nullptr;
 
+    int mVerboseLevel = 0;
+
 private:
 
     static QString makeRecordFilename(const QString &streamId,const QString folder) {
@@ -271,7 +284,8 @@ private:
 
         int wret = av_interleaved_write_frame(m_outCtx, &pkt);
         if (wret < 0) {
-            log_error("[REC] Error writing frame", wret);
+            if(mVerboseLevel>0)
+                qWarning() << "[REC]" << m_streamId << "Error writing frame to MP4. ErrCode ="<<wret;
         }
     }
 

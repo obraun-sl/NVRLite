@@ -122,6 +122,9 @@ See (6) for json configuration
 - Start Record : POST /record/start
 - Stop Record : POST /record/stop
 - Get Status : GET /stream/status<?stream_id=xxxx>
+- Remove file : POST /files/remove?file=<filename>"
+- Get file info : GET /files/status?file=<filename>"
+- list files : GET /files/list[?ext=mp4]/[?all=1]"
 
 
 #### 4.1.1 Start streaming
@@ -342,7 +345,94 @@ In case of one single stream (endpoint : ?stream_id=<id>)
     }
   ```
     
+#### 4.1.6 Remove file
 
+**Endpoint**
+
+```http
+POST /files/remove?file=xxxxxx
+Content-Type: application/json
+```
+
+
+**Behavior**
+
+  - Returns:
+
+  ```json
+    {
+      "status": "ok",
+      "file": "<name_of_the_file_deleted>"
+    }   
+  ```
+    
+In case of failure
+
+  ```json     
+    {
+      "status": "failed",
+      "message": "xxxxxxx"
+    }
+  ```
+  
+
+#### 4.1.7 Get file info
+
+**Endpoint**
+
+```http
+GET /files/status?file=xxxxxx
+Content-Type: application/json
+```
+
+
+**Behavior**
+
+  - Returns:
+
+  ```json
+    {
+      "status": "ok" or "failure",
+      "file": "<name_of_the_file>",
+      "path": "<full path>",
+      "folder_base": "<folder>",
+      "size_bytes": <size in bytes>,
+      "suffix": "extension",
+      "last_modified_utc": "date",
+      "birth_time_utc": "date",
+      "created_utc": "date",
+      "is_readable": <true or false>,
+    }   
+  ```
+
+
+#### 4.1.8 list files
+
+**Endpoint**
+
+```http
+GET /files/list
+// Optional:
+//   ?ext=mp4   (default: mp4)
+//   ?all=1     (list all files, ignore ext)
+Content-Type: application/json
+```
+
+
+**Behavior**
+
+  - Returns:
+
+  ```json
+    {
+      "status": "ok",
+      "folder_base": "<name_of_the_file_deleted>",
+      "count": <numberoffiles>, 
+      "files":[xxxxxx]
+    }   
+  ```
+  
+}
 ---
 
 ## 5. Display

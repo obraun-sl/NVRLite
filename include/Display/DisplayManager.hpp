@@ -30,6 +30,10 @@ public:
         }
     }
 
+
+    void setVerboseLevel(int lvl){ mVerboseLevel = lvl; }
+
+
 public slots:
     void onFrame(const QString &streamId,const cv::Mat &frame) {
         QMutexLocker locker(&m_mutex);
@@ -44,9 +48,14 @@ private slots:
         if (m_lastFrames.empty())
             return;
 
+
         int n = m_lastFrames.size();
         int cols = std::ceil(std::sqrt(n));
         int rows = std::ceil(n / (double)cols);
+
+        if (mVerboseLevel>=4)
+            qDebug()<<" Bach of frames ready for display ==> Size : "<<n;
+
 
         int cell_w = 320;
         int cell_h = 240;
@@ -103,6 +112,7 @@ private:
     QTimer *m_timer = nullptr;
     QMutex  m_mutex;
     QHash<QString, cv::Mat> m_lastFrames;
+    int mVerboseLevel = 0;
 };
 
 

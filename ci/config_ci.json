@@ -1,0 +1,14 @@
+{
+  "streams": [
+    { "id": "cam01", "url": "rtsp://127.0.0.1:8554/cam01" },
+    { "id": "cam02", "url": "rtsp://127.0.0.1:8554/cam02" },
+    { "id": "cam03", "url": "rtsp://127.0.0.1:8554/cam03" }
+  ],
+  "http_port": 8090,
+  "autostart": 0,
+  "display_mode": 0,
+  "pre_buffering_time": 1.0,
+  "post_buffering_time": 1.0,
+  "rec_base_folder": "./recordings_ci/",
+  "log_level": 1
+}

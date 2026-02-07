@@ -25,6 +25,7 @@ public:
     void stop();
 
     void setVerboseLevel(int lvl){ mVerboseLevel = lvl; }
+    void setFolderBase(QString p) {mFolderBasePath=p;}
 
     // Optional: still allow setting a shared JSON payload for /data
     void setPayload(const QByteArray& payload, const QString& contentType = "application/json");
@@ -47,9 +48,6 @@ private :
 
 
 public slots:
-    // Connect these slots to your Mp4RecorderWorker signals:
-    //  Mp4RecorderWorker::recordingStarted(streamId, filePath)
-    //  Mp4RecorderWorker::recordingStopped(streamId)
     void onRecordingStarted(const QString& streamId, const QString& filePath);
     void onRecordingStopped(const QString& streamId);
 
@@ -82,10 +80,15 @@ private:
     QReadWriteLock         m_filesLock;
     QHash<QString, QString> m_lastRecordingFile; // streamId -> filePath
     QHash<QString, bool>    m_recordingState;    // streamId -> isRecording
+    // When /record/start is accepted but recorder hasn't yet emitted onRecordingStarted()
+    QHash<QString, bool>    m_recordingPending;  // streamId -> start requested, waiting for file
+    // If /record/stop is received while start is still pending (file unknown), remember it.
+    QHash<QString, bool>    m_stopPending;       // streamId -> stop requested while pending
     QHash<QString, bool>    m_streamingState;    // streamId -> is streaming
     QSet<QString>           m_knownStreams;      // all configured/known streams
 
     int mVerboseLevel = 0;
+    QString mFolderBasePath="~/";
 };
 
 #endif // _HTTP_MANAGER_H
