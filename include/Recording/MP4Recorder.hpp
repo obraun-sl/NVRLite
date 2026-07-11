@@ -23,6 +23,9 @@ public:
 signals:
     void recordingStarted(const QString &streamId, const QString &filePath);
     void recordingStopped(const QString &streamId);
+    // Emitted when a start attempt fails so the control layer can clear any
+    // "pending" state instead of getting stuck waiting for a file forever.
+    void recordingFailed(const QString &streamId, const QString &reason);
 
 public slots:
     void setFolderBase(QString path) { mFolder = path;}
@@ -47,6 +50,9 @@ public slots:
         if (!m_recording) {
             // Prebuffer for pre-roll
             m_prebuffer.push_back(packet);
+            m_prebufferBytes += static_cast<size_t>(packet.data.size());
+
+            // Time-based trim: keep only the last pre_buffering_time seconds.
             if (!m_prebuffer.empty()) {
                 const EncodedVideoPacket &last = m_prebuffer.back();
                 int64_t last_ts = (last.pts != AV_NOPTS_VALUE) ? last.pts : last.dts;
@@ -58,12 +64,22 @@ public slots:
                         if (first_ts == AV_NOPTS_VALUE) break;
                         double first_sec = first_ts * av_q2d(first.time_base);
                         if (last_sec - first_sec > pre_buffering_time) {
+                            m_prebufferBytes -= static_cast<size_t>(m_prebuffer.front().data.size());
                             m_prebuffer.pop_front();
                         } else {
                             break;
                         }
                     }
                 }
+            }
+
+            // Hard safety cap, independent of timestamps: a stream delivering
+            // packets without usable PTS/DTS would otherwise grow the prebuffer
+            // without bound (OOM). Drop the oldest packets past the cap.
+            while (m_prebuffer.size() > kMaxPrebufferPackets ||
+                   m_prebufferBytes > kMaxPrebufferBytes) {
+                m_prebufferBytes -= static_cast<size_t>(m_prebuffer.front().data.size());
+                m_prebuffer.pop_front();
             }
         } else {
             writePacket(packet);
@@ -77,6 +93,7 @@ public slots:
         }
         if (!m_infoReady) {
             qWarning() << "[REC]" << m_streamId << "stream info not ready";
+            emit recordingFailed(m_streamId, "stream info not ready");
             return;
         }
 
@@ -86,6 +103,8 @@ public slots:
                                            filename.toUtf8().constData()) < 0 || !m_outCtx) {
             if(mVerboseLevel>0)
                 qWarning() << "[REC]" << m_streamId << "failed to alloc output context";
+            m_outCtx = nullptr;
+            emit recordingFailed(m_streamId, "failed to alloc output context");
             return;
         }
 
@@ -95,6 +114,7 @@ public slots:
                 qWarning() << "[REC]" << m_streamId << "failed to alloc new stream";
             avformat_free_context(m_outCtx);
             m_outCtx = nullptr;
+            emit recordingFailed(m_streamId, "failed to alloc new stream");
             return;
         }
 
@@ -120,6 +140,7 @@ public slots:
                 avformat_free_context(m_outCtx);
                 m_outCtx = nullptr;
                 m_outStream = nullptr;
+                emit recordingFailed(m_streamId, "failed to create output file");
                 return;
             }
         }
@@ -133,6 +154,7 @@ public slots:
             avformat_free_context(m_outCtx);
             m_outCtx = nullptr;
             m_outStream = nullptr;
+            emit recordingFailed(m_streamId, "failed to write MP4 header");
             return;
         }
 
@@ -144,6 +166,7 @@ public slots:
             writePacket(p);
         }
         m_prebuffer.clear();
+        m_prebufferBytes = 0;
 
         emit recordingStarted(m_streamId, filename);
         qInfo() << "[REC]" << m_streamId << "started recording ->" << filename;
@@ -181,9 +204,9 @@ public slots:
         qInfo() << "[REC]" << m_streamId
                 << "stop requested, will finalize after"
                 << post_buffering_time << "seconds";
-
-
-        emit recordingStopped(m_streamId);
+        // NOTE: recordingStopped is emitted from finalizeRecording(), i.e. once
+        // the file is actually closed. Emitting it here would make the control
+        // layer report "not recording" while we are still writing the post-roll.
     }
 
 
@@ -214,6 +237,14 @@ private:
     int64_t         m_recStartPts = AV_NOPTS_VALUE;
 
     std::deque<EncodedVideoPacket> m_prebuffer;
+    size_t          m_prebufferBytes = 0;
+
+    // Hard safety caps that bound prebuffer memory even for streams whose
+    // packets carry no usable PTS/DTS (see onPacket()).
+    static constexpr size_t kMaxPrebufferPackets = 100000;
+    static constexpr size_t kMaxPrebufferBytes   = 512ull * 1024 * 1024; // 512 MB
+
+    AVPacket       *m_pkt = nullptr; // reusable output packet (avoids stack AVPacket / av_init_packet)
 
     QString mFolder = "./";
 
@@ -244,12 +275,22 @@ private:
     void writePacket(const EncodedVideoPacket &packet) {
         if (!m_recording || !m_outCtx || !m_outStream) return;
 
-        AVPacket pkt;
-        av_init_packet(&pkt);
-        pkt.data = (uint8_t*)packet.data.constData();
-        pkt.size = packet.data.size();
-        pkt.flags = packet.key ? AV_PKT_FLAG_KEY : 0;
-        pkt.stream_index = m_outStream->index;
+        if (!m_pkt) {
+            m_pkt = av_packet_alloc();
+            if (!m_pkt) {
+                if(mVerboseLevel>0)
+                    qWarning() << "[REC]" << m_streamId << "av_packet_alloc failed";
+                return;
+            }
+        }
+        // Reset to a clean state before reuse. Our data buffer is not
+        // reference-counted (buf == nullptr) so this never frees the QByteArray.
+        av_packet_unref(m_pkt);
+
+        m_pkt->data = (uint8_t*)packet.data.constData();
+        m_pkt->size = packet.data.size();
+        m_pkt->flags = packet.key ? AV_PKT_FLAG_KEY : 0;
+        m_pkt->stream_index = m_outStream->index;
 
         int64_t src_pts = (packet.pts != AV_NOPTS_VALUE) ? packet.pts : packet.dts;
         if (m_recStartPts == AV_NOPTS_VALUE && src_pts != AV_NOPTS_VALUE) {
@@ -257,32 +298,32 @@ private:
         }
 
         if (packet.pts != AV_NOPTS_VALUE && m_recStartPts != AV_NOPTS_VALUE) {
-            pkt.pts = av_rescale_q(packet.pts - m_recStartPts,
-                                   packet.time_base,
-                                   m_outStream->time_base);
+            m_pkt->pts = av_rescale_q(packet.pts - m_recStartPts,
+                                      packet.time_base,
+                                      m_outStream->time_base);
         } else {
-            pkt.pts = AV_NOPTS_VALUE;
+            m_pkt->pts = AV_NOPTS_VALUE;
         }
 
         if (packet.dts != AV_NOPTS_VALUE && m_recStartPts != AV_NOPTS_VALUE) {
-            pkt.dts = av_rescale_q(packet.dts - m_recStartPts,
-                                   packet.time_base,
-                                   m_outStream->time_base);
+            m_pkt->dts = av_rescale_q(packet.dts - m_recStartPts,
+                                      packet.time_base,
+                                      m_outStream->time_base);
         } else {
-            pkt.dts = AV_NOPTS_VALUE;
+            m_pkt->dts = AV_NOPTS_VALUE;
         }
 
         if (packet.duration > 0) {
-            pkt.duration = av_rescale_q(packet.duration,
-                                        packet.time_base,
-                                        m_outStream->time_base);
+            m_pkt->duration = av_rescale_q(packet.duration,
+                                           packet.time_base,
+                                           m_outStream->time_base);
         } else {
-            pkt.duration = 0;
+            m_pkt->duration = 0;
         }
 
-        pkt.pos = -1;
+        m_pkt->pos = -1;
 
-        int wret = av_interleaved_write_frame(m_outCtx, &pkt);
+        int wret = av_interleaved_write_frame(m_outCtx, m_pkt);
         if (wret < 0) {
             if(mVerboseLevel>0)
                 qWarning() << "[REC]" << m_streamId << "Error writing frame to MP4. ErrCode ="<<wret;
@@ -309,12 +350,18 @@ private:
         if (m_postStopTimer && m_postStopTimer->isActive())
             m_postStopTimer->stop();
 
+        if (m_pkt)
+            av_packet_free(&m_pkt);
+
         m_outCtx       = nullptr;
         m_outStream    = nullptr;
         m_recStartPts  = AV_NOPTS_VALUE;
         m_recording    = false;
         m_stopPending  = false;
         qInfo() << "[REC]" << m_streamId << "stopped recording";
+
+        // Signalled here (not at stop-request time) so state reflects reality.
+        emit recordingStopped(m_streamId);
     }
 };
 

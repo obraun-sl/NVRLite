@@ -7,7 +7,9 @@
 
 int main(int argc, char *argv[]) {
 
-    av_register_all();
+#if (LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58, 9, 100))
+    av_register_all();   // no-op since FFmpeg 4.0, removed in 5.0
+#endif
     avformat_network_init();
 
     QCoreApplication app(argc, argv);
@@ -151,6 +153,10 @@ int main(int argc, char *argv[]) {
         QObject::connect(recWorker, &Mp4RecorderWorker::recordingStopped,
                          &httpServer, &HttpDataServer::onRecordingStopped,
                          Qt::QueuedConnection);
+
+        QObject::connect(recWorker, &Mp4RecorderWorker::recordingFailed,
+                         &httpServer, &HttpDataServer::onRecordingFailed,
+                         Qt::QueuedConnection);
     }
 
     // HTTP -> Capture threads: stream start/stop
@@ -177,9 +183,12 @@ int main(int argc, char *argv[]) {
 
     int ret = app.exec();
 
-    // Clean up capture threads
+    // Clean up capture threads.
+    // NOTE: run() loops on m_abort (set by requestStop()), NOT on Qt's
+    // interruption flag; requestInterruption() would leave the loop running
+    // and wait() would block forever.
     for (auto *cap : captureThreads) {
-        cap->requestInterruption();
+        cap->requestStop();
         cap->wait();
         delete cap;
     }

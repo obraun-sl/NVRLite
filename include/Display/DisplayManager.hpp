@@ -73,8 +73,9 @@ private slots:
                 cv::resize(it.value(), resized, cv::Size(cell_w, cell_h));
                 resized.copyTo(dstRoi);
 
-                // overlay streamId
-                cv::putText(resized,
+                // overlay streamId — draw onto the grid cell (dstRoi), not the
+                // temporary 'resized' (which was previously discarded).
+                cv::putText(dstRoi,
                             it.key().toStdString(),
                             cv::Point(10, 20),
                             cv::FONT_HERSHEY_SIMPLEX,
@@ -92,14 +93,19 @@ private slots:
             qInfo() << "Start recording for all streams";
             for (const auto &id : m_streamIds) {
                 if (m_recorders->contains(id)) {
-                    (*m_recorders)[id]->startRecording(); // queued to recorder thread
+                    // Marshal into the recorder's own thread. Calling directly
+                    // from the display (main) thread races with onPacket()/
+                    // writePacket() running in the recorder thread.
+                    QMetaObject::invokeMethod((*m_recorders)[id], "startRecording",
+                                              Qt::QueuedConnection);
                 }
             }
         } else if (key == 's' || key == 'S') {
             qInfo() << "Stop recording for all streams";
             for (const auto &id : m_streamIds) {
                 if (m_recorders->contains(id)) {
-                    (*m_recorders)[id]->stopRecording(); // queued
+                    QMetaObject::invokeMethod((*m_recorders)[id], "stopRecording",
+                                              Qt::QueuedConnection);
                 }
             }
         }

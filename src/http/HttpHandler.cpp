@@ -164,10 +164,13 @@ void HttpDataServer::createRoutes()
                 response["stream_id"] = j["stream_id"];
 
                 if (filePath.isEmpty()) {
-                    response["status"]  = "failed";
-                    response["message"] = "timeout waiting for recording file to be created/known";
+                    // The start was accepted and most likely succeeded; the file
+                    // name just hasn't propagated back within the poll window.
+                    // Report 202 Accepted rather than a hard 500 failure.
+                    response["status"]  = "pending";
+                    response["message"] = "recording start accepted; file not yet known";
                     response["file"]    = nullptr;
-                    res.status = 500;
+                    res.status = 202;
                 } else {
                     response["status"] = "ok";
                     response["file"]   = filePath.toStdString();
@@ -557,9 +560,19 @@ void HttpDataServer::createRoutes()
             fi.birthTime().toUTC().toString(Qt::ISODate).toStdString();
 #endif
 
-        // created() exists in Qt5 but may be filesystem-dependent; keep it anyway
+        // 'created_utc' kept for backward compatibility. Sourced from birthTime()
+        // (fallback metadataChangeTime()) to avoid the deprecated QFileInfo::created().
+#if QT_VERSION >= QT_VERSION_CHECK(5, 10, 0)
+        {
+            QDateTime created = fi.birthTime();
+            if (!created.isValid())
+                created = fi.metadataChangeTime();
+            response["created_utc"] = created.toUTC().toString(Qt::ISODate).toStdString();
+        }
+#else
         response["created_utc"] =
             fi.created().toUTC().toString(Qt::ISODate).toStdString();
+#endif
 
         response["is_readable"] = fi.isReadable();
         res.status = 200;
@@ -712,5 +725,18 @@ void HttpDataServer::onRecordingStopped(const QString& streamId) {
     m_knownStreams.insert(streamId);          // ensure it's known
     if (mVerboseLevel > 0) {
         qDebug() << "[HTTP] Recording stopped:" << streamId;
+    }
+}
+
+void HttpDataServer::onRecordingFailed(const QString& streamId, const QString& reason) {
+    QWriteLocker locker(&m_filesLock);
+    // A start attempt failed: reset all transient state so a subsequent
+    // /record/start is not rejected with "start already pending".
+    m_recordingState[streamId]   = false;
+    m_recordingPending[streamId] = false;
+    m_stopPending[streamId]      = false;
+    m_knownStreams.insert(streamId);
+    if (mVerboseLevel > 0) {
+        qDebug() << "[HTTP] Recording failed:" << streamId << "reason:" << reason;
     }
 }

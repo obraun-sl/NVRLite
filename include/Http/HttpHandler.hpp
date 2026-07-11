@@ -50,6 +50,9 @@ private :
 public slots:
     void onRecordingStarted(const QString& streamId, const QString& filePath);
     void onRecordingStopped(const QString& streamId);
+    // Recorder failed to start: clear pending/recording state so the stream
+    // does not stay stuck reporting "start already pending" forever.
+    void onRecordingFailed(const QString& streamId, const QString& reason);
 
     // Connected to RtspCaptureThread::streamOnlineChanged(streamId, online) to get stream status
     void onStreamOnlineChanged(const QString &streamId, bool online);

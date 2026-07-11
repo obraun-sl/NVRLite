@@ -31,7 +31,7 @@ extern "C" {
 #include <QDebug>
 #include <QDir>
 
-#define APP_VERSION "0.2.4"
+#define APP_VERSION "0.2.5"
 
 // ---------------- EncodedVideoPacket (for signals) ----------------
 struct EncodedVideoPacket {
@@ -148,7 +148,7 @@ inline static bool loadConfigFile(const QString &path,
             QDir t_dir  = QDir(config.rec_base_folder);
             if (!t_dir.exists())
             {
-                bool r = QDir().mkdir(config.rec_base_folder);
+                bool r = QDir().mkpath(config.rec_base_folder); // mkpath: create parents too
                 if (r)
                     qDebug()<<"[CFG] Creating DIR = "<<config.rec_base_folder;
                 else
@@ -199,7 +199,7 @@ inline static bool loadConfigFile(const QString &path,
 
         /// Pre buffering Time
         config.prebufferingTime = 5.0;
-        if (j.contains("pre_buffering_time") && j["pre_buffering_time"].is_number_float()) {
+        if (j.contains("pre_buffering_time") && j["pre_buffering_time"].is_number()) {
             config.prebufferingTime = j["pre_buffering_time"].get<float>();
         }
         else
@@ -207,7 +207,7 @@ inline static bool loadConfigFile(const QString &path,
 
         /// Post buffering Time
         config.postbufferingTime = 0.5;
-        if (j.contains("post_buffering_time") && j["post_buffering_time"].is_number_float()) {
+        if (j.contains("post_buffering_time") && j["post_buffering_time"].is_number()) {
             config.postbufferingTime = j["post_buffering_time"].get<float>();
         }
         else

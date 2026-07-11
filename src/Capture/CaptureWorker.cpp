@@ -32,16 +32,14 @@ void RtspCaptureThread::onStreamStopRequested(const QString &streamId)
     if (streamId != m_streamId)
         return;
 
+    // IMPORTANT: this slot runs in the object's owner thread (main thread),
+    // NOT inside run(). We must not touch the FFmpeg contexts here: only the
+    // capture thread is allowed to open/close/read them. Closing the input
+    // from here would race with av_read_frame() in run() (use-after-free).
+    // Just request the transition via the atomic flag; run() observes it and
+    // performs closeInput() + emits streamOnlineChanged(false) itself.
     m_enableStreaming.storeRelease(0);
-    {
-        QMutexLocker locker(&guard);
-        closeInput();
-        if (m_online) {
-            m_online = false;
-            emit streamOnlineChanged(m_streamId, false);
-        }
-    }
-    qInfo() << "[CAP]" << m_streamId << "streaming DISABLED via HTTP";
+    qInfo() << "[CAP]" << m_streamId << "streaming DISABLE requested via HTTP";
 }
 
 bool RtspCaptureThread::openInput() {
@@ -267,7 +265,7 @@ void RtspCaptureThread::run() {
                 const int fpsNoSignal = 5;     // NO SIGNAL frame rate
                 const int emitMs      = 1000 / fpsNoSignal;
 
-                while (!m_abort.loadAcquire()) {
+                while (!m_abort.loadAcquire() && m_enableStreaming.loadAcquire()) {
                     auto now          = clock::now();
                     auto msSinceStart = std::chrono::duration_cast<std::chrono::milliseconds>(now - startWait).count();
                     if (msSinceStart >= 5000)  // 5s
@@ -281,9 +279,7 @@ void RtspCaptureThread::run() {
 
                     QThread::msleep(10);
                 }
-                continue; // will retry openInput()
-                if(mVerboseLevel>0)
-                    qDebug() << "[CAP]" << m_streamId << "==> Will retry input loading";
+                continue; // retry openInput() (or handle stream disable on next iteration)
 
             } else {
                 // Just successfully opened
